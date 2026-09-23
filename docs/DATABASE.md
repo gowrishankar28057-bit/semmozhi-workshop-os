@@ -1,0 +1,3 @@
+# Database
+
+PostgreSQL on Neon is the production store. Prisma schema covers users, organizer profiles, workshops, sessions, registrations, attendance, announcements, certificates, resources, communities/members/posts/comments, notifications, Learning Passports/records, prerequisites, and audit logs. Uniques prevent duplicate registrations, attendance, memberships, learning records, and certificates. Use a pooled `DATABASE_URL` for application traffic and direct `DIRECT_URL` for migrations. Create migrations on a development branch, review SQL, and promote through environments; never run reset commands against production.

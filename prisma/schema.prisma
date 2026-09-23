@@ -1,0 +1,356 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  ADMIN
+  ORGANIZER
+  PARTICIPANT
+}
+
+enum OrganizerStatus {
+  ACTIVE
+  DISABLED
+  PENDING
+}
+
+enum WorkshopStatus {
+  DRAFT
+  PUBLISHED
+  ONGOING
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+enum WorkshopMode {
+  ONLINE
+  OFFLINE
+  HYBRID
+}
+
+enum RegistrationStatus {
+  REGISTERED
+  WAITLISTED
+  CANCELLED
+  CHECKED_OUT
+  COMPLETED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum NotificationType {
+  ANNOUNCEMENT
+  WORKSHOP
+  ATTENDANCE
+  CERTIFICATE
+  SYSTEM
+}
+
+enum CommunityRole {
+  OWNER
+  MODERATOR
+  MEMBER
+}
+
+enum ResourceType {
+  DOCUMENT
+  VIDEO
+  AUDIO
+  LINK
+  OTHER
+}
+
+model User {
+  id                String            @id @default(cuid())
+  email             String            @unique
+  name              String
+  passwordHash      String?
+  emailVerified     DateTime?
+  image             String?
+  role              Role              @default(PARTICIPANT)
+  locale            String            @default("en")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  organizerProfile  OrganizerProfile?
+  registrations     Registration[]
+  attendances       Attendance[]
+  certificates      Certificate[]
+  communityMembers  CommunityMember[]
+  posts             Post[]
+  comments          Comment[]
+  notifications     Notification[]
+  learningPassport  LearningPassport?
+  auditLogs          AuditLog[]         @relation("AuditActor")
+
+  @@index([role])
+}
+
+model OrganizerProfile {
+  id            String          @id @default(cuid())
+  userId        String          @unique
+  organization  String?
+  bio           String?
+  phone         String?
+  status        OrganizerStatus @default(PENDING)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workshops     Workshop[]
+}
+
+model Workshop {
+  id                  String                 @id @default(cuid())
+  organizerId         String
+  slug                String                 @unique
+  title               String
+  titleTa             String?
+  summary             String
+  description         String
+  category            String
+  mode                WorkshopMode
+  status              WorkshopStatus         @default(DRAFT)
+  venue               String?
+  onlineUrl           String?
+  startsAt            DateTime
+  endsAt              DateTime
+  capacity            Int?
+  registrationClosesAt DateTime?
+  publishedAt         DateTime?
+  archivedAt          DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  organizer           OrganizerProfile       @relation(fields: [organizerId], references: [id], onDelete: Restrict)
+  sessions            Session[]
+  registrations       Registration[]
+  announcements       Announcement[]
+  resources           Resource[]
+  certificates        Certificate[]
+  community           Community?
+  learningRecords     LearningRecord[]
+  prerequisites       WorkshopPrerequisite[] @relation("WorkshopPrerequisites")
+  requiredBy          WorkshopPrerequisite[] @relation("RequiredWorkshop")
+
+  @@index([organizerId, status])
+  @@index([status, startsAt])
+  @@index([category])
+}
+
+model Session {
+  id             String       @id @default(cuid())
+  workshopId     String
+  title          String
+  description    String?
+  startsAt       DateTime
+  endsAt         DateTime
+  venue          String?
+  meetingUrl     String?
+  recordingUrl   String?
+  attendanceOpen Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  workshop       Workshop     @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  attendances    Attendance[]
+
+  @@index([workshopId, startsAt])
+}
+
+model Registration {
+  id            String             @id @default(cuid())
+  workshopId    String
+  participantId String
+  status        RegistrationStatus @default(REGISTERED)
+  registeredAt  DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  workshop      Workshop           @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  participant   User               @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([workshopId, participantId])
+  @@index([participantId, status])
+}
+
+model Attendance {
+  id            String           @id @default(cuid())
+  sessionId     String
+  participantId String
+  status        AttendanceStatus
+  checkedInAt   DateTime?
+  source        String           @default("manual")
+  notes         String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  session       Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant   User             @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, participantId])
+  @@index([participantId, status])
+}
+
+model Announcement {
+  id          String   @id @default(cuid())
+  workshopId  String
+  title       String
+  body        String
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workshop    Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId, publishedAt])
+}
+
+model Certificate {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  workshopId     String
+  participantId  String
+  attendanceRate Decimal  @db.Decimal(5, 2)
+  issuedAt       DateTime @default(now())
+  revokedAt      DateTime?
+  pdfUrl         String?
+  metadata       Json?
+  workshop       Workshop @relation(fields: [workshopId], references: [id], onDelete: Restrict)
+  participant    User     @relation(fields: [participantId], references: [id], onDelete: Restrict)
+
+  @@unique([workshopId, participantId])
+  @@index([participantId, issuedAt])
+}
+
+model Resource {
+  id          String       @id @default(cuid())
+  workshopId  String
+  title       String
+  description String?
+  type        ResourceType @default(LINK)
+  url         String
+  createdAt   DateTime     @default(now())
+  workshop    Workshop     @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@index([workshopId, createdAt])
+}
+
+model Community {
+  id          String            @id @default(cuid())
+  workshopId  String?           @unique
+  name        String
+  description String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  workshop    Workshop?         @relation(fields: [workshopId], references: [id], onDelete: SetNull)
+  members     CommunityMember[]
+  posts       Post[]
+}
+
+model CommunityMember {
+  communityId String
+  userId      String
+  role        CommunityRole @default(MEMBER)
+  joinedAt    DateTime      @default(now())
+  community   Community     @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([communityId, userId])
+  @@index([userId])
+}
+
+model Post {
+  id          String    @id @default(cuid())
+  communityId String
+  authorId    String
+  title       String
+  body        String
+  pinned      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  comments    Comment[]
+
+  @@index([communityId, createdAt])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  postId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([postId, createdAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  actionUrl String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+}
+
+model LearningPassport {
+  id            String           @id @default(cuid())
+  participantId String           @unique
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  participant   User             @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  records       LearningRecord[]
+}
+
+model LearningRecord {
+  id              String           @id @default(cuid())
+  passportId      String
+  workshopId      String
+  completedAt     DateTime
+  learningMinutes Int
+  category        String
+  skills          String[]
+  passport        LearningPassport @relation(fields: [passportId], references: [id], onDelete: Cascade)
+  workshop        Workshop         @relation(fields: [workshopId], references: [id], onDelete: Restrict)
+
+  @@unique([passportId, workshopId])
+  @@index([passportId, completedAt])
+}
+
+model WorkshopPrerequisite {
+  workshopId         String
+  requiredWorkshopId String
+  workshop           Workshop @relation("WorkshopPrerequisites", fields: [workshopId], references: [id], onDelete: Cascade)
+  requiredWorkshop   Workshop @relation("RequiredWorkshop", fields: [requiredWorkshopId], references: [id], onDelete: Cascade)
+
+  @@id([workshopId, requiredWorkshopId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ipHash     String?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+}

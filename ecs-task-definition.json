@@ -1,0 +1,54 @@
+# AWS ECS Task Definition for Semmozhi Workshop OS
+{
+  "family": "semmozhi-workshop-os",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "containerDefinitions": [
+    {
+      "name": "semmozhi-app",
+      "image": "YOUR_ECR_REGISTRY/semmozhi-workshop-os:latest",
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "hostPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "NODE_ENV",
+          "value": "production"
+        },
+        {
+          "name": "NEXTAUTH_URL",
+          "value": "https://your-domain.com"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:semmozhi/database-url"
+        },
+        {
+          "name": "NEXTAUTH_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:semmozhi/nextauth-secret"
+        },
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:semmozhi/jwt-secret"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/semmozhi-workshop-os",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ],
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole"
+}
